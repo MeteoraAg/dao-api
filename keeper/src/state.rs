@@ -132,3 +132,41 @@ pub struct BribeInfo {
     pub bribe_index: u32,
     pub reward_each_epoch: u64,
 }
+
+pub struct EpochInfos {
+    pub epochs: HashMap<u64, Vec<GaugeInfo>>,
+    pub max_cached: u64,
+}
+
+pub fn init_epoch_infos() -> Arc<Mutex<EpochInfos>> {
+    let e = EpochInfos {
+        epochs: HashMap::new(),
+        max_cached: 3,
+    };
+    Arc::new(Mutex::new(e))
+}
+
+impl EpochInfos {
+    pub fn clear_old_epochs(&mut self, latest_epoch: u64) {
+        let mut epochs = HashMap::new();
+        for epoch in (latest_epoch - self.max_cached)..(latest_epoch + 1) {
+            match self.epochs.get(&epoch) {
+                Some(value) => {
+                    epochs.insert(epoch, value.clone());
+                }
+                None => continue,
+            }
+        }
+        self.epochs = epochs;
+    }
+    pub fn save_epoch(&mut self, epoch: u64, epoch_info: Vec<GaugeInfo>) {
+        self.epochs.insert(epoch, epoch_info);
+    }
+    pub fn get_epoch_info(&self, epoch: u64) -> Result<Vec<GaugeInfo>> {
+        let epoch_info = self
+            .epochs
+            .get(&epoch)
+            .ok_or(anyhow::Error::msg("Cannot find epoch"))?;
+        Ok(epoch_info.clone())
+    }
+}

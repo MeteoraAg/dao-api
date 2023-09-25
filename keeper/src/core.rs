@@ -1,5 +1,5 @@
 // use gauge::GaugeFactory;
-use crate::state::{BribeInfo, DaoState, GaugeFactoryState, GaugeInfo, GaugeState};
+use crate::state::{BribeInfo, DaoState, EpochInfos, GaugeFactoryState, GaugeInfo, GaugeState};
 use crate::unwrap_ok_or;
 
 use crate::anchor_adapter::AClock;
@@ -28,6 +28,7 @@ pub struct Core {
     pub provider: String,
     pub keypair_url: String,
     pub state: Arc<Mutex<DaoState>>,
+    pub epochs: Arc<Mutex<EpochInfos>>,
 }
 
 impl Core {
@@ -285,6 +286,20 @@ impl Core {
         Ok(())
     }
 
+    pub async fn process_cache_latest_epoches(&self) -> Result<()> {
+        // latest epoch
+        let gauge_factory_state = self.get_gauge_factory();
+        let current_voting_epoch: u64 = gauge_factory_state.current_voting_epoch.into();
+        let latest_epoch = self.get_epoch_info_internal(current_voting_epoch).await?;
+        {
+            let mut epochs = self.epochs.lock().unwrap();
+            epochs.save_epoch(current_voting_epoch, latest_epoch);
+            epochs.clear_old_epochs(current_voting_epoch);
+        }
+
+        Ok(())
+    }
+
     pub async fn process_sync_gauge(&self) -> Result<()> {
         //payer
         // let payer = read_keypair_file(self.keypair_url.clone()).expect("Requires a keypair file");
@@ -396,8 +411,19 @@ impl Core {
         let state: std::sync::MutexGuard<'_, DaoState> = self.state.lock().unwrap();
         return state.get_gauges();
     }
-
     pub async fn get_epoch_info(&self, epoch: u64) -> Result<Vec<GaugeInfo>> {
+        // get from cache first
+        let epoch_info = {
+            let epochs = self.epochs.lock().unwrap();
+            epochs.get_epoch_info(epoch)
+        };
+
+        match epoch_info {
+            Ok(info) => Ok(info),
+            Err(_) => self.get_epoch_info_internal(epoch).await,
+        }
+    }
+    pub async fn get_epoch_info_internal(&self, epoch: u64) -> Result<Vec<GaugeInfo>> {
         let epoch: i64 = epoch.try_into()?;
         let epoch_gauges = get_epoch_gauges(&self.pg_pool, epoch).await?;
         let bribes = get_bribes(&self.pg_pool, epoch).await?;

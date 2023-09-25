@@ -18,6 +18,7 @@ use log::info;
 use router::router;
 use routerify::RouterService;
 use sqlx::migrate::Migrator;
+use state::init_epoch_infos;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::time::interval;
@@ -79,12 +80,12 @@ async fn main() {
     let pg_pool = create_pg_pool(postgres_args).await.unwrap();
     MIGRATOR.run(&pg_pool).await.unwrap();
 
-    let state = init_state();
     let core = Core {
         pg_pool,
         base,
         provider,
-        state,
+        state: init_state(),
+        epochs: init_epoch_infos(),
         keypair_url,
     };
 
@@ -172,6 +173,24 @@ async fn main() {
                 match core.process_crawl_bribe().await {
                     Ok(_) => {}
                     Err(err) => println!("process_crawl_bribe err {}", err),
+                }
+            }
+        });
+        handles.push(handle);
+    }
+
+    {
+        // crawl bribe
+        let core = core.clone();
+        let handle = tokio::spawn(async move {
+            let duration = 30 * 1; // 1 min
+            let mut interval = interval(Duration::from_secs(duration));
+            loop {
+                interval.tick().await;
+                info!("process_cache_latest_epoches");
+                match core.process_cache_latest_epoches().await {
+                    Ok(_) => {}
+                    Err(err) => println!("process_cache_latest_epoches err {}", err),
                 }
             }
         });
