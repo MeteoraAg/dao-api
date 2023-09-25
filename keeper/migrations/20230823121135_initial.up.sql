@@ -42,16 +42,16 @@ CREATE TABLE IF NOT EXISTS public.epoch_gauge (
     address VARCHAR PRIMARY KEY,
     gauge VARCHAR NOT NULL,
     voting_epoch BIGINT NOT NULL,
-    total_power BIGINT NOT NULL,
-    token_a_fee BIGINT NOT NULL,
-    token_b_fee BIGINT NOT NULL
+    total_power VARCHAR NOT NULL,
+    token_a_fee VARCHAR NOT NULL,
+    token_b_fee VARCHAR NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS public.bribe (
     address VARCHAR PRIMARY KEY,
     gauge VARCHAR NOT NULL,
     token_mint VARCHAR NOT NULL,
-    reward_each_epoch BIGINT NOT NULL,
+    reward_each_epoch VARCHAR NOT NULL,
     briber VARCHAR NOT NULL,
     token_account_vault VARCHAR NOT NULL,
     bribe_rewards_epoch_start BIGINT NOT NULL,

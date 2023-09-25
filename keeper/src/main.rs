@@ -128,7 +128,7 @@ async fn main() {
         // crawl epoch up
         let core = core.clone();
         let handle = tokio::spawn(async move {
-            let duration = 20 * 1; // 1 min
+            let duration = 10 * 1; // 1 min
             let mut interval = interval(Duration::from_secs(duration));
             loop {
                 interval.tick().await;
@@ -146,7 +146,7 @@ async fn main() {
         // crawl epoch down
         let core = core.clone();
         let handle = tokio::spawn(async move {
-            let duration = 60 * 1; // 1 min
+            let duration = 10 * 1; // 1 min
             let mut interval = interval(Duration::from_secs(duration));
             loop {
                 interval.tick().await;

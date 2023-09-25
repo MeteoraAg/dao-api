@@ -146,7 +146,7 @@ pub struct Bribe {
     pub address: String,
     pub gauge: String,
     pub token_mint: String,
-    pub reward_each_epoch: i64,
+    pub reward_each_epoch: String,
     pub briber: String,
     pub token_account_vault: String,
     pub bribe_rewards_epoch_start: i64,
@@ -185,7 +185,7 @@ pub async fn save_bribe(
     let bribe_rewards_epoch_start: i64 = bribe.bribe_rewards_epoch_start.into();
     let bribe_rewards_epoch_end: i64 = bribe.bribe_rewards_epoch_end.into();
     let bribe_index: i64 = bribe.bribe_index.into();
-    let reward_each_epoch: i64 = bribe.reward_each_epoch.try_into()?;
+    let reward_each_epoch = bribe.reward_each_epoch.to_string();
     sqlx::query!(
         r#"
             INSERT INTO bribe (address, gauge, token_mint, reward_each_epoch, briber, token_account_vault, bribe_rewards_epoch_start, bribe_rewards_epoch_end, bribe_index) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)            
@@ -209,9 +209,9 @@ pub async fn save_bribe(
 pub struct EpochGauge {
     pub address: String,
     pub gauge: String,
-    pub total_power: i64,
-    pub token_a_fee: i64,
-    pub token_b_fee: i64,
+    pub total_power: String,
+    pub token_a_fee: String,
+    pub token_b_fee: String,
     pub voting_epoch: i64,
 }
 

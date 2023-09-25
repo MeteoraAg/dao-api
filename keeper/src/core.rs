@@ -193,7 +193,7 @@ impl Core {
         save_epoch_gauges_up(
             &self.pg_pool,
             &epoch_gauges,
-            (should_craw_epoch + 1) as i64,
+            (should_craw_epoch + 1).into(),
             should_craw_epoch < current_voting_epoch,
         )
         .await?;
@@ -206,6 +206,7 @@ impl Core {
         if crawl_epoch_down < 0 {
             return Ok(());
         }
+        let crawl_epoch_down = u32::try_from(crawl_epoch_down)?;
 
         let gauges = {
             let state = self.state.lock().unwrap();
@@ -242,6 +243,7 @@ impl Core {
             .map(|x| gauge::EpochGauge::try_deserialize(&mut x.unwrap().data.as_ref()).unwrap())
             .collect();
 
+        let crawl_epoch_down: i64 = crawl_epoch_down.into();
         save_epoch_gauges_down(&self.pg_pool, &epoch_gauges, crawl_epoch_down - 1).await?;
 
         Ok(())
@@ -408,22 +410,25 @@ impl Core {
             let bribes: Vec<BribeInfo> = bribes
                 .clone()
                 .into_iter()
-                .filter(|x| x.gauge.clone() == epoch_gauge.gauge.clone())
+                .filter(|x| {
+                    x.gauge.clone() == epoch_gauge.gauge.clone()
+                        && x.reward_each_epoch.parse::<u64>().is_ok()
+                })
                 .map(|x| BribeInfo {
                     pubkey: x.address,
                     token_mint: x.token_mint,
                     bribe_index: x.bribe_index as u32,
-                    reward_each_epoch: x.reward_each_epoch as u64,
+                    reward_each_epoch: x.reward_each_epoch.parse::<u64>().unwrap(),
                 })
                 .collect();
 
             gauge_infos.push(GaugeInfo {
                 gauge_pk: epoch_gauge.gauge.clone(),
-                voting_power: epoch_gauge.total_power as u64,
+                voting_power: epoch_gauge.total_power.parse::<u64>()?,
                 token_a_mint: gauge.token_a_mint,
                 token_b_mint: gauge.token_b_mint,
-                token_a_fee: epoch_gauge.token_a_fee as u64,
-                token_b_fee: epoch_gauge.token_b_fee as u64,
+                token_a_fee: epoch_gauge.token_a_fee.parse::<u64>()?,
+                token_b_fee: epoch_gauge.token_b_fee.parse::<u64>()?,
                 bribes,
             })
         }
