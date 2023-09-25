@@ -122,5 +122,13 @@ pub struct GaugeInfo {
     pub token_b_mint: String,
     pub token_a_fee: u64,
     pub token_b_fee: u64,
-    pub bribe_token_mints: Vec<(String, u64)>,
+    pub bribes: Vec<BribeInfo>,
+}
+
+#[derive(Default, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct BribeInfo {
+    pub pubkey: String,
+    pub token_mint: String,
+    pub bribe_index: u32,
+    pub reward_each_epoch: u64,
 }

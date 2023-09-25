@@ -1,5 +1,5 @@
 // use gauge::GaugeFactory;
-use crate::state::{DaoState, GaugeFactoryState, GaugeInfo, GaugeState};
+use crate::state::{BribeInfo, DaoState, GaugeFactoryState, GaugeInfo, GaugeState};
 use crate::unwrap_ok_or;
 
 use crate::anchor_adapter::AClock;
@@ -405,11 +405,16 @@ impl Core {
         for epoch_gauge in epoch_gauges.iter() {
             let gauge = DaoState::get_gauge(&gauges, epoch_gauge.gauge.clone())?;
 
-            let bribe_token_mints: Vec<(String, u64)> = bribes
+            let bribes: Vec<BribeInfo> = bribes
                 .clone()
                 .into_iter()
                 .filter(|x| x.gauge.clone() == epoch_gauge.gauge.clone())
-                .map(|x| (x.token_mint, x.reward_each_epoch as u64))
+                .map(|x| BribeInfo {
+                    pubkey: x.address,
+                    token_mint: x.token_mint,
+                    bribe_index: x.bribe_index as u32,
+                    reward_each_epoch: x.reward_each_epoch as u64,
+                })
                 .collect();
 
             gauge_infos.push(GaugeInfo {
@@ -419,7 +424,7 @@ impl Core {
                 token_b_mint: gauge.token_b_mint,
                 token_a_fee: epoch_gauge.token_a_fee as u64,
                 token_b_fee: epoch_gauge.token_b_fee as u64,
-                bribe_token_mints,
+                bribes,
             })
         }
 
