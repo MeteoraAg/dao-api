@@ -20,14 +20,31 @@ pub fn router(core: Arc<Core>) -> Router<Body, Infallible> {
         .unwrap()
 }
 
+fn get_response_builder() -> hyper::http::response::Builder {
+    Response::builder()
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Headers", "*")
+        .header(
+            "Access-Control-Allow-Methods",
+            "PUT, GET, POST, OPTIONS, DELETE, PATCH",
+        )
+}
 async fn get_version(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    Ok(Response::new(Body::from("0.1")))
+    let builder = get_response_builder();
+    let response = builder.body(Body::from("0.1"));
+    match response {
+        Ok(value) => Ok(value),
+        Err(_) => Ok(Response::new(Body::from("Internal server"))),
+    }
 }
 
 async fn get_gauge_factory(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let core = req.data::<Arc<Core>>().unwrap();
     match serde_json::to_string(&core.get_gauge_factory()) {
-        Ok(res) => Ok(Response::new(Body::from(res))),
+        Ok(res) => {
+            let builder = get_response_builder();
+            Ok(builder.body(Body::from(res)).unwrap())
+        }
         Err(_) => Ok(Response::new(Body::from("Cannot encode gauge factory"))),
     }
 }
@@ -35,7 +52,10 @@ async fn get_gauge_factory(req: Request<Body>) -> Result<Response<Body>, Infalli
 async fn get_gauges(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let core = req.data::<Arc<Core>>().unwrap();
     match serde_json::to_string(&core.get_gauges()) {
-        Ok(res) => Ok(Response::new(Body::from(res))),
+        Ok(res) => {
+            let builder = get_response_builder();
+            Ok(builder.body(Body::from(res)).unwrap())
+        }
         Err(_) => Ok(Response::new(Body::from("Cannot encode gauges"))),
     }
 }
@@ -52,7 +72,10 @@ async fn get_epoch(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 
     match core.get_epoch_info(epoch).await {
         Ok(info) => match serde_json::to_string(&info) {
-            Ok(res) => Ok(Response::new(Body::from(res))),
+            Ok(res) => {
+                let builder = get_response_builder();
+                Ok(builder.body(Body::from(res)).unwrap())
+            }
             Err(_) => Ok(Response::new(Body::from("Cannot encode epoch info"))),
         },
         Err(err) => Ok(Response::new(Body::from("Cannot get epoch info"))),
