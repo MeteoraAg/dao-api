@@ -15,6 +15,9 @@ pub fn router(core: Arc<Core>) -> Router<Body, Infallible> {
         .get("/gauge_factory", get_gauge_factory)
         .get("/gauges", get_gauges)
         .get("/epoch/:epoch", get_epoch)
+        .get("/latest_epoches", get_latest_epoches)
+        .get("/pools", get_all_pools)
+        .get("/quarries", get_all_quarries)
         .err_handler_with_info(error_handler)
         .build()
         .unwrap()
@@ -71,6 +74,51 @@ async fn get_epoch(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     };
 
     match core.get_epoch_info(epoch).await {
+        Ok(info) => match serde_json::to_string(&info) {
+            Ok(res) => {
+                let builder = get_response_builder();
+                Ok(builder.body(Body::from(res)).unwrap())
+            }
+            Err(_) => Ok(Response::new(Body::from("Cannot encode epoch info"))),
+        },
+        Err(err) => Ok(Response::new(Body::from("Cannot get epoch info"))),
+    }
+}
+
+async fn get_latest_epoches(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    let core = req.data::<Arc<Core>>().unwrap();
+
+    match core.get_latest_epoches().await {
+        Ok(info) => match serde_json::to_string(&info) {
+            Ok(res) => {
+                let builder = get_response_builder();
+                Ok(builder.body(Body::from(res)).unwrap())
+            }
+            Err(_) => Ok(Response::new(Body::from("Cannot encode epoch info"))),
+        },
+        Err(err) => Ok(Response::new(Body::from("Cannot get epoch info"))),
+    }
+}
+
+async fn get_all_pools(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    let core = req.data::<Arc<Core>>().unwrap();
+
+    match core.get_all_pools().await {
+        Ok(info) => match serde_json::to_string(&info) {
+            Ok(res) => {
+                let builder = get_response_builder();
+                Ok(builder.body(Body::from(res)).unwrap())
+            }
+            Err(_) => Ok(Response::new(Body::from("Cannot encode epoch info"))),
+        },
+        Err(err) => Ok(Response::new(Body::from("Cannot get epoch info"))),
+    }
+}
+
+async fn get_all_quarries(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    let core = req.data::<Arc<Core>>().unwrap();
+
+    match core.get_all_quarries().await {
         Ok(info) => match serde_json::to_string(&info) {
             Ok(res) => {
                 let builder = get_response_builder();

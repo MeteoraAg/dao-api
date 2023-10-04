@@ -1,6 +1,8 @@
+use anchor_client::solana_sdk::pubkey;
 // use gauge::GaugeFactory;
-use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_client::solana_sdk::signature::Signable;
+use anchor_lang::prelude::Pubkey;
+use anchor_lang::solana_program::blake3::Hash;
 use anyhow::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,12 +43,19 @@ pub struct GaugeState {
 pub struct DaoState {
     pub gauge_factory: GaugeFactoryState,
     pub gauges: HashMap<Pubkey, GaugeState>,
+    pub quarries: HashMap<Pubkey, quarry::Quarry>,
+
+    pub pools: HashMap<Pubkey, PoolDynamicInfo>,
+    pub quarry_infos: HashMap<Pubkey, QuarryDynamicInfo>,
 }
 
 pub fn init_state() -> Arc<Mutex<DaoState>> {
     let e = DaoState {
         gauge_factory: GaugeFactoryState::default(),
         gauges: HashMap::new(),
+        quarries: HashMap::new(),
+        pools: HashMap::new(),
+        quarry_infos: HashMap::new(),
     };
     Arc::new(Mutex::new(e))
 }
@@ -75,7 +84,11 @@ impl DaoState {
         self.gauge_factory.bribe_index = gauge_factory.bribe_index;
     }
 
-    pub fn save_gauge(&mut self, gauges: &Vec<(Pubkey, gauge::Gauge)>) {
+    pub fn save_gauges_and_quarries(
+        &mut self,
+        gauges: &Vec<(Pubkey, gauge::Gauge)>,
+        quarries: &Vec<(Pubkey, quarry::Quarry)>,
+    ) {
         for (pubkey, gauge) in gauges.iter() {
             let gauge_state = GaugeState {
                 pubkey: pubkey.to_string(),
@@ -95,6 +108,10 @@ impl DaoState {
 
             self.gauges.insert(*pubkey, gauge_state);
         }
+
+        for (pubkey, quarry) in quarries.iter() {
+            self.quarries.insert(*pubkey, *quarry);
+        }
     }
     pub fn get_gauges(&self) -> Vec<GaugeState> {
         let mut gauges = vec![];
@@ -112,11 +129,23 @@ impl DaoState {
         }
         return Err(Error::msg("cannot find gauge"));
     }
+
+    pub fn get_pools(&self) -> HashMap<Pubkey, PoolDynamicInfo> {
+        self.pools.clone()
+    }
+}
+
+#[derive(Default, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct EpochGaugeInfoWrapper {
+    pub epoch: u64,
+    pub gauges: Vec<GaugeInfo>,
 }
 
 #[derive(Default, PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct GaugeInfo {
     pub gauge_pk: String,
+    pub pool_pk: String,
+    pub quarry_pk: String,
     pub voting_power: u64,
     pub token_a_mint: String,
     pub token_b_mint: String,
@@ -169,4 +198,51 @@ impl EpochInfos {
             .ok_or(anyhow::Error::msg("Cannot find epoch"))?;
         Ok(epoch_info.clone())
     }
+}
+
+#[derive(Default, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct PoolDynamicInfo {
+    pub pubkey: Pubkey,
+    pub tvl: String,        // in usd
+    pub quarry_tvl: String, // in usd
+}
+
+#[derive(Default, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct QuarryDynamicInfo {
+    pub pubkey: Pubkey,
+    pub tvl: String,        // in usd
+    pub quarry_tvl: String, // in usd
+    pub apy: String,
+}
+
+#[derive(Default, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct PoolInfo {
+    pub pubkey: String,
+    pub amm_type: u64,
+    pub token_a_mint: String,
+    pub token_b_mint: String,
+    pub tvl: String,        // in usd
+    pub quarry_tvl: String, // in usd
+}
+
+#[derive(Default, PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub struct QuarryInfo {
+    pub pubkey: String,
+    pub quarry_tvl: String, // in usd
+    pub apy: String,
+    // those info are from state:
+    /// Total number of tokens deposited into the quarry.
+    pub total_tokens_deposited: u64,
+    /// Number of [Miner]s.
+    pub num_miners: u64,
+    /// Timestamp when quarry rewards cease
+    pub famine_ts: i64,
+    /// Amm pool this quarry is designated to
+    pub amm_pool: String,
+    /// Amm type, can be Meteora or LbClmm
+    pub amm_type: u64,
+    /// Amount of rewards distributed to the quarry per year.
+    pub annual_rewards_rate: u64,
+    /// Rewards shared allocated to this quarry
+    pub rewards_share: u64,
 }

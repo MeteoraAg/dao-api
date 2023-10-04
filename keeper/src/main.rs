@@ -119,7 +119,10 @@ async fn main() {
             loop {
                 interval.tick().await;
                 info!("process_monitor gauge");
-                core.process_monitor_gauge().await;
+                match core.process_monitor_gauge().await {
+                    Ok(_) => {}
+                    Err(err) => println!("process_monitor_gauge err {}", err),
+                }
             }
         });
         handles.push(handle);

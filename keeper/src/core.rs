@@ -1,14 +1,16 @@
 // use gauge::GaugeFactory;
-use crate::state::{BribeInfo, DaoState, EpochInfos, GaugeFactoryState, GaugeInfo, GaugeState};
-use crate::unwrap_ok_or;
-
 use crate::anchor_adapter::AClock;
 use crate::database::*;
+use crate::state::{
+    BribeInfo, DaoState, EpochGaugeInfoWrapper, EpochInfos, GaugeFactoryState, GaugeInfo,
+    GaugeState, PoolInfo, QuarryInfo,
+};
 use crate::sync_gauge::*;
+use crate::unwrap_ok_or;
 use crate::utils::create_program;
 use anchor_client::solana_client::nonblocking::rpc_client::RpcClient;
 use anchor_client::solana_client::rpc_filter::RpcFilterType;
-use anchor_client::solana_sdk::signature::read_keypair_file;
+use anchor_client::solana_sdk::signature::{read_keypair_file, Signable};
 use anchor_client::solana_sdk::signer::keypair::Keypair;
 use anchor_client::Program;
 use anchor_lang::prelude::*;
@@ -17,6 +19,7 @@ use anchor_lang::AccountDeserialize;
 use anyhow::Result;
 use sqlx::Pool;
 use sqlx::Postgres;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::str::FromStr;
@@ -62,9 +65,29 @@ impl Core {
             .filter(|&x| x.1.gauge_factory == gauge_factory)
             .collect::<Vec<(Pubkey, gauge::Gauge)>>();
 
+        // get all quarries
+        let quarry_pks = gauges
+            .clone()
+            .into_iter()
+            .map(|x| x.1.quarry)
+            .collect::<Vec<Pubkey>>();
+
+        let quary_accounts = program.rpc().get_multiple_accounts(&quarry_pks)?;
+
+        let quarries: Vec<(Pubkey, quarry::Quarry)> = quary_accounts
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| {
+                (
+                    quarry_pks[i],
+                    quarry::Quarry::try_deserialize(&mut x.unwrap().data.as_ref()).unwrap(),
+                )
+            })
+            .collect::<Vec<(Pubkey, quarry::Quarry)>>();
+
         {
             let mut state = self.state.lock().unwrap();
-            state.save_gauge(&gauges);
+            state.save_gauges_and_quarries(&gauges, &quarries);
             state.save_gauge_factory(&gauge_factory_state, self.base.clone(), &gauge_factory);
         };
 
@@ -107,27 +130,20 @@ impl Core {
         state.save_gauge_factory(&gauge_factory_state, self.base.clone(), &gauge_factory);
     }
 
-    pub async fn process_monitor_gauge(&self) {
-        let program: Program<Arc<Keypair>> = unwrap_ok_or!(
-            create_program(
-                self.provider.to_string(),
-                self.provider.to_string(),
-                gauge::ID,
-                Arc::new(Keypair::new()),
-            ),
-            "Cannot get program client"
-        );
-
+    pub async fn process_monitor_gauge(&self) -> Result<()> {
+        let program: Program<Arc<Keypair>> = create_program(
+            self.provider.to_string(),
+            self.provider.to_string(),
+            gauge::ID,
+            Arc::new(Keypair::new()),
+        )?;
         let gauge_factory = self.get_gauge_factory_addr();
 
-        let gauges: Vec<(Pubkey, gauge::Gauge)> = unwrap_ok_or!(
-            program
-                .accounts::<gauge::Gauge>(vec![RpcFilterType::DataSize(
-                    (8 + std::mem::size_of::<gauge::Gauge>()) as u64,
-                )])
-                .await,
-            "Cannot get gauges"
-        );
+        let gauges: Vec<(Pubkey, gauge::Gauge)> = program
+            .accounts::<gauge::Gauge>(vec![RpcFilterType::DataSize(
+                (8 + std::mem::size_of::<gauge::Gauge>()) as u64,
+            )])
+            .await?;
 
         // filter gauge
         let gauges = gauges
@@ -135,8 +151,29 @@ impl Core {
             .filter(|&x| x.1.gauge_factory == gauge_factory)
             .collect::<Vec<(Pubkey, gauge::Gauge)>>();
 
+        // get all quarries
+        let quarry_pks = gauges
+            .clone()
+            .into_iter()
+            .map(|x| x.1.quarry)
+            .collect::<Vec<Pubkey>>();
+
+        let quary_accounts = program.rpc().get_multiple_accounts(&quarry_pks)?;
+
+        let quarries: Vec<(Pubkey, quarry::Quarry)> = quary_accounts
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| {
+                (
+                    quarry_pks[i],
+                    quarry::Quarry::try_deserialize(&mut x.unwrap().data.as_ref()).unwrap(),
+                )
+            })
+            .collect::<Vec<(Pubkey, quarry::Quarry)>>();
+
         let mut state = self.state.lock().unwrap();
-        state.save_gauge(&gauges);
+        state.save_gauges_and_quarries(&gauges, &quarries);
+        Ok(())
     }
 
     pub async fn process_crawl_epoch_up(&self) -> Result<()> {
@@ -423,6 +460,87 @@ impl Core {
             Err(_) => self.get_epoch_info_internal(epoch).await,
         }
     }
+
+    pub async fn get_latest_epoches(&self) -> Result<HashMap<String, EpochGaugeInfoWrapper>> {
+        let gauge_factory_state = self.get_gauge_factory();
+        let current_voting_epoch: u64 = gauge_factory_state.current_voting_epoch.into();
+        let current_epoch_gauges_info = self.get_epoch_info(current_voting_epoch).await?;
+
+        let mut response = HashMap::new();
+        response.insert(
+            "current_epoch".to_string(),
+            EpochGaugeInfoWrapper {
+                epoch: current_voting_epoch,
+                gauges: current_epoch_gauges_info,
+            },
+        );
+        if current_voting_epoch > 0 {
+            let last_epoch = current_voting_epoch - 1;
+            let last_epoch_gauges_info = self.get_epoch_info(last_epoch).await?;
+            response.insert(
+                "last_epoch".to_string(),
+                EpochGaugeInfoWrapper {
+                    epoch: last_epoch,
+                    gauges: last_epoch_gauges_info,
+                },
+            );
+        }
+
+        Ok(response)
+    }
+
+    pub async fn get_all_pools(&self) -> Result<Vec<PoolInfo>> {
+        let (gauges, pool_map) = {
+            let state = self.state.lock().unwrap();
+            (state.get_gauges(), state.pools.clone())
+        };
+        let mut pools = vec![];
+        for gauge in gauges.iter() {
+            let (tvl, quarry_tvl) = match pool_map.get(&Pubkey::from_str(&gauge.amm_pool)?) {
+                Some(value) => (value.tvl.clone(), value.quarry_tvl.clone()),
+                None => (String::from("0"), String::from("0")),
+            };
+
+            pools.push(PoolInfo {
+                pubkey: gauge.amm_pool.clone(),
+                token_a_mint: gauge.token_a_mint.clone(),
+                token_b_mint: gauge.token_b_mint.clone(),
+                amm_type: gauge.amm_type,
+                tvl, // TODO cached tvl and quarry tvl
+                quarry_tvl,
+            })
+        }
+        Ok(pools)
+    }
+
+    pub async fn get_all_quarries(&self) -> Result<Vec<QuarryInfo>> {
+        let (quarries, quarry_infos) = {
+            let state = self.state.lock().unwrap();
+            (state.quarries.clone(), state.quarry_infos.clone())
+        };
+
+        let mut response = vec![];
+        for (pubkey, quarry) in quarries.iter() {
+            let (apy, quarry_tvl) = match quarry_infos.get(&pubkey) {
+                Some(value) => (value.apy.clone(), value.quarry_tvl.clone()),
+                None => (String::from("0"), String::from("0")),
+            };
+
+            response.push(QuarryInfo {
+                pubkey: pubkey.to_string(),
+                total_tokens_deposited: quarry.total_tokens_deposited,
+                num_miners: quarry.num_miners,
+                famine_ts: quarry.famine_ts,
+                amm_pool: quarry.amm_pool.to_string(),
+                amm_type: quarry.amm_type,
+                annual_rewards_rate: quarry.annual_rewards_rate,
+                rewards_share: quarry.rewards_share,
+                apy,
+                quarry_tvl,
+            })
+        }
+        Ok(response)
+    }
     pub async fn get_epoch_info_internal(&self, epoch: u64) -> Result<Vec<GaugeInfo>> {
         let epoch: i64 = epoch.try_into()?;
         let epoch_gauges = get_epoch_gauges(&self.pg_pool, epoch).await?;
@@ -450,6 +568,8 @@ impl Core {
 
             gauge_infos.push(GaugeInfo {
                 gauge_pk: epoch_gauge.gauge.clone(),
+                pool_pk: gauge.amm_pool.to_string(),
+                quarry_pk: gauge.quarry.to_string(),
                 voting_power: epoch_gauge.total_power.parse::<u64>()?,
                 token_a_mint: gauge.token_a_mint,
                 token_b_mint: gauge.token_b_mint,
