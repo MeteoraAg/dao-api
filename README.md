@@ -5,4 +5,4 @@ Service to provide common information for Meteora incentives system
 cargo build
 
 # Usage (from keeper folder)
-../target/debug/dao-keeper --base ba1cSyikTN3sX4W4AxbjmDac1GB3TD8JUzNb17btKZK --socket-address https://api.devnet.solana.com --postgres-user mercurial --postgres-password mercurial1234 --postgres-db keeper --postgres-socket-address localhost:5432 --provider https://api.devnet.solana.com --should-crank 1
+../target/debug/dao-keeper --base ba1AznDonanrFY2Ek6jaiMmkccMeU43A5TXU2jB8f4N --socket-address https://api.devnet.solana.com --postgres-user mercurial --postgres-password mercurial1234 --postgres-db keeper --postgres-socket-address localhost:5432 --provider https://api.devnet.solana.com --should-crank 1
