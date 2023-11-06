@@ -178,7 +178,12 @@ pub fn init_epoch_infos() -> Arc<Mutex<EpochInfos>> {
 impl EpochInfos {
     pub fn clear_old_epochs(&mut self, latest_epoch: u64) {
         let mut epochs = HashMap::new();
-        for epoch in (latest_epoch - self.max_cached)..(latest_epoch + 1) {
+        let start_cached_epoch = if latest_epoch > self.max_cached {
+            latest_epoch - self.max_cached
+        } else {
+            0
+        };
+        for epoch in start_cached_epoch..=latest_epoch {
             match self.epochs.get(&epoch) {
                 Some(value) => {
                     epochs.insert(epoch, value.clone());
